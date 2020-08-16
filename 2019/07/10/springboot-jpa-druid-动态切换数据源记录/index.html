@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+    
+  <meta name="description" content="融合智慧 共创未来 冠军" />
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    springboot jpa druid 动态切换数据源记录 |  那微微的星火 是希望
+  </title>
+  <meta name="generator" content="hexo-theme-yilia-plus">
+  
+  <link rel="shortcut icon" href="/favicon.png" />
+  
+  <link rel="stylesheet" href="/css/style.css">
+  <script src="/js/pace.min.js"></script>
+
+  
+
+  
+
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    <main class="content">
+      <section class="outer">
+  <article id="post-springboot-jpa-druid-动态切换数据源记录" class="article article-type-post" itemscope
+  itemprop="blogPost" data-scroll-reveal>
+
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  springboot jpa druid 动态切换数据源记录
+</h1>
+  
+
+    </header>
+    
+
+    
+    <div class="article-meta">
+      <a href="/2019/07/10/springboot-jpa-druid-动态切换数据源记录/" class="article-date">
+  <time datetime="2019-07-10T12:05:58.000Z" itemprop="datePublished">2019-07-10</time>
+</a>
+      
+  <div class="article-category">
+    <a class="article-category-link" href="/categories/技术/">技术</a>
+  </div>
+
+      
+      
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">919字</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">4分钟</span>
+        </span>
+    </span>
+</div>
+
+      
+    </div>
+    
+
+    
+    
+    <div class="tocbot"></div>
+
+
+
+
+
+    
+
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+
+
+      
+
+      
+      <h2 id="场景"><a href="#场景" class="headerlink" title="场景"></a>场景</h2><ul>
+<li>大型应用中的读写分离；</li>
+<li>相同业务逻辑，但是对应多个数据库；<a id="more"></a>
+<h2 id="几张非常形象的图片奉上"><a href="#几张非常形象的图片奉上" class="headerlink" title="几张非常形象的图片奉上"></a>几张非常形象的图片奉上</h2></li>
+</ul>
+<ol>
+<li>单一数据库场景</li>
+</ol>
+<ul>
+<li><img src="/img/2019-2/single.jpg" alt></li>
+</ul>
+<ol start="2">
+<li>多数据库场景</li>
+</ol>
+<ul>
+<li><img src="/img/2019-2/two-data.jpg" alt></li>
+</ul>
+<ol start="3">
+<li>动态切换</li>
+</ol>
+<ul>
+<li><img src="/img/2019-2/dyna-data.jpg" alt></li>
+</ul>
+<h2 id="实现方案"><a href="#实现方案" class="headerlink" title="实现方案"></a>实现方案</h2><ul>
+<li>步骤</li>
+</ul>
+<ol>
+<li>核心是实现Spring 内置的 AbstractRoutingDataSource 抽象类，实现determineCurrentLookupKey() 方法；</li>
+<li>实例化出多个datasource，并将这些datasource加入到该抽象类中的targetDataSources。</li>
+<li>在操作数据前，dao层会先调用 AbstractRoutingDataSource 抽象类getConnection(),其中的调用的是determineCurrentLookupKey()，获取到对应的datasource；</li>
+<li>借助ThreadLocal保存数据源信息，在整个业务流程中方便获取;</li>
+</ol>
+<ul>
+<li>难点<br>不同连接池实例化事务管理、和生成类似数据库的sessionFactory方法有所不同，可能会费些时间。</li>
+</ul>
+<h2 id="代码实现"><a href="#代码实现" class="headerlink" title="代码实现"></a>代码实现</h2><h3 id="环境介绍"><a href="#环境介绍" class="headerlink" title="环境介绍"></a>环境介绍</h3><ul>
+<li>springboot版本： 1.5.6.RELEASE</li>
+<li>连接池：alibaba druid</li>
+</ul>
+<h3 id="部分代码"><a href="#部分代码" class="headerlink" title="部分代码"></a>部分代码</h3><ul>
+<li><p>配置文件, 密码就暴漏吧，哈哈</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line">spring.datasource.druid.test1.url=jdbc:mysql://localhost:3306/multi_test1?characterEncoding=utf8&amp;characterSetResults=utf8&amp;autoReconnect=true&amp;failOverReadOnly=false&amp;serverTimezone=GMT</span><br><span class="line">spring.datasource.druid.test1.username=root</span><br><span class="line">spring.datasource.druid.test1.password=123456</span><br><span class="line"></span><br><span class="line">spring.datasource.druid.test2.url=jdbc:mysql://localhost:3306/multi_test2?characterEncoding=utf8&amp;characterSetResults=utf8&amp;autoReconnect=true&amp;failOverReadOnly=false&amp;serverTimezone=GMT</span><br><span class="line">spring.datasource.druid.test2.username=root</span><br><span class="line">spring.datasource.druid.test2.password=123456</span><br><span class="line"></span><br><span class="line">spring.datasource.type = com.alibaba.druid.pool.DruidDataSource</span><br><span class="line"></span><br><span class="line">spring.jpa.show-sql=true</span><br><span class="line">spring.jpa.hibernate.naming.physical-strategy=org.springframework.boot.orm.jpa.hibernate.SpringPhysicalNamingStrategy</span><br></pre></td></tr></table></figure>
+</li>
+<li><p>实现AbstractRoutingDataSource 抽象类</p>
+</li>
+</ul>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line">public class DynamicDataSourceRouter extends AbstractRoutingDataSource &#123;</span><br><span class="line">    </span><br><span class="line">    public static final ThreadLocal&lt;String&gt; dbStore = new ThreadLocal&lt;&gt;();</span><br><span class="line"></span><br><span class="line">    @Override</span><br><span class="line">    protected Object determineCurrentLookupKey() &#123;</span><br><span class="line">        String dbBean = dbStore.get();</span><br><span class="line">        if(StringUtils.isBlank(dbBean))&#123;</span><br><span class="line">            dbBean = SourceName.TEST1.dbName;</span><br><span class="line">        &#125; else &#123;</span><br><span class="line">            </span><br><span class="line">        &#125;</span><br><span class="line">        return dbBean;</span><br><span class="line">    &#125;</span><br><span class="line">    enum SourceName&#123;</span><br><span class="line">        TEST1(&quot;test1&quot;),TEST2(&quot;test2&quot;);</span><br><span class="line">        </span><br><span class="line">        public String dbName;</span><br><span class="line">        </span><br><span class="line">        private SourceName(String name)&#123;</span><br><span class="line">            this.dbName = name;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<ul>
+<li>实例化出多个数据源，加入到DynamicDataSourceRouter父类的setTargetDataSources，并设置默认值</li>
+</ul>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br></pre></td><td class="code"><pre><span class="line">@Configuration</span><br><span class="line">@Slf4j</span><br><span class="line">public class MultiDataConfig &#123;</span><br><span class="line"></span><br><span class="line">    @Value(&quot;$&#123;spring.datasource.type&#125;&quot;)</span><br><span class="line">    private Class&lt;? extends DataSource&gt; dataSourceType;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">    @Bean(&quot;test1&quot;)</span><br><span class="line">    @Primary</span><br><span class="line">    @ConfigurationProperties(prefix = &quot;spring.datasource.druid.test1&quot;)</span><br><span class="line">    public DataSource test1()&#123;</span><br><span class="line">        log.info(&quot;构建test1数据源&quot;);</span><br><span class="line">        DataSource source = DataSourceBuilder.create().type(dataSourceType).build();</span><br><span class="line">        return source;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    @Bean(&quot;test2&quot;)</span><br><span class="line">    @ConfigurationProperties(prefix = &quot;spring.datasource.druid.test2&quot;)</span><br><span class="line">    public DataSource test2()&#123;</span><br><span class="line">        log.info(&quot;构建test2--- 数据源&quot;);</span><br><span class="line">        DataSource source = DataSourceBuilder.create().type(dataSourceType).build();</span><br><span class="line">        return source;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    @Bean(&quot;routingDataSource&quot;)</span><br><span class="line">    public AbstractRoutingDataSource routingDataSource(@Qualifier(&quot;test1&quot;) DataSource test1,@Qualifier(&quot;test2&quot;) DataSource test2)&#123;</span><br><span class="line">        DynamicDataSourceRouter assistant = new DynamicDataSourceRouter();</span><br><span class="line">        Map&lt;Object, Object&gt; dataSources = new HashMap&lt;&gt;();</span><br><span class="line">        dataSources.put(DynamicDataSourceRouter.SourceName.TEST1.dbName,test1);</span><br><span class="line">        dataSources.put(DynamicDataSourceRouter.SourceName.TEST2.dbName,test2);</span><br><span class="line">        assistant.setDefaultTargetDataSource( test2 );</span><br><span class="line">        assistant.setTargetDataSources(dataSources);</span><br><span class="line">        return assistant;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<ul>
+<li>手动对 Jpa 的 EntityManager 进行初始化和配置</li>
+</ul>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br></pre></td><td class="code"><pre><span class="line"> */</span><br><span class="line">@Configuration</span><br><span class="line">@EnableConfigurationProperties(JpaProperties.class)</span><br><span class="line">@EnableJpaRepositories(value = &quot;cn.rzwl.multidata.dao&quot;)</span><br><span class="line">public class JpaEntityManager &#123;</span><br><span class="line">    </span><br><span class="line">    @Autowired</span><br><span class="line">    private JpaProperties jpaProperties;</span><br><span class="line"></span><br><span class="line">    @Resource(name = &quot;routingDataSource&quot;)</span><br><span class="line">    private DataSource routingDataSource;</span><br><span class="line"></span><br><span class="line">    @Bean(name = &quot;entityManagerFactoryBean&quot;)</span><br><span class="line">    public LocalContainerEntityManagerFactoryBean entityManagerFactoryBean(EntityManagerFactoryBuilder builder) &#123;</span><br><span class="line">        // 不明白为什么这里获取不到 application.yml 里的配置</span><br><span class="line">        Map&lt;String, String&gt; properties = jpaProperties.getProperties();</span><br><span class="line">        //要设置这个属性，实现 CamelCase -&gt; UnderScore 的转换</span><br><span class="line">        properties.put(&quot;hibernate.physical_naming_strategy&quot;,</span><br><span class="line">                &quot;org.springframework.boot.orm.jpa.hibernate.SpringPhysicalNamingStrategy&quot;);</span><br><span class="line">        return builder</span><br><span class="line">                .dataSource(routingDataSource)//关键：注入routingDataSource</span><br><span class="line">                .properties(properties)</span><br><span class="line">                .packages(&quot;cn.rzwl.multidata.entity&quot;) //TODO 改成自己的实体类包</span><br><span class="line">                .persistenceUnit(&quot;myPersistenceUnit&quot;)</span><br><span class="line">                .build();</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    @Primary</span><br><span class="line">    @Bean(name = &quot;entityManagerFactory&quot;)</span><br><span class="line">    public EntityManagerFactory entityManagerFactory(EntityManagerFactoryBuilder builder) &#123;</span><br><span class="line">        return this.entityManagerFactoryBean(builder).getObject();</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    @Primary</span><br><span class="line">    @Bean(name = &quot;transactionManager&quot;)</span><br><span class="line">    public PlatformTransactionManager transactionManager(EntityManagerFactoryBuilder builder) &#123;</span><br><span class="line">        return new JpaTransactionManager(entityManagerFactory(builder));</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<ul>
+<li>为方便测试，用filter验证</li>
+</ul>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line">@WebFilter(urlPatterns = &quot;/*&quot;)</span><br><span class="line">@Slf4j</span><br><span class="line">public class MyFilter implements Filter &#123;</span><br><span class="line">    </span><br><span class="line">    @Override</span><br><span class="line">    public void init(FilterConfig filterConfig) throws ServletException &#123;</span><br><span class="line">        log.info(&quot;初始化自定义过滤器&quot;);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    @Override</span><br><span class="line">    public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain) throws IOException, ServletException &#123;</span><br><span class="line">        HttpServletRequest req = (HttpServletRequest) request;</span><br><span class="line">        String site = request.getParameter(&quot;source&quot;);</span><br><span class="line">        if( DynamicDataSourceRouter.SourceName.TEST1.dbName.equals( site ) )&#123;</span><br><span class="line">            DynamicDataSourceRouter.dbStore.set( DynamicDataSourceRouter.SourceName.TEST1.dbName );</span><br><span class="line">        &#125; else &#123;</span><br><span class="line">            DynamicDataSourceRouter.dbStore.set( DynamicDataSourceRouter.SourceName.TEST2.dbName );</span><br><span class="line">        &#125;</span><br><span class="line">        log.info(&quot;进入业务流程&quot;);</span><br><span class="line">        chain.doFilter( request,response );</span><br><span class="line">        log.info(&quot;完成处理&quot;);</span><br><span class="line">        System.out.println(&quot;后续操作&quot;);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    @Override</span><br><span class="line">    public void destroy() &#123;</span><br><span class="line"></span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="源码地址"><a href="#源码地址" class="headerlink" title="源码地址:"></a>源码地址:</h3><p> <a href="https://github.com/championjing/multi-datasource" target="_blank" rel="noopener">点击可看</a> </p>
+<h2 id="小结："><a href="#小结：" class="headerlink" title="小结："></a>小结：</h2><ul>
+<li>一个神奇的AbstractRoutingDataSource类，使数据库切换操作举重若轻，优雅得体，告别劳力式编程。</li>
+</ul>
+
+      
+      <!-- reward -->
+      
+      <div id="reward-btn">
+        打赏
+      </div>
+      
+    </div>
+    
+    
+      <!-- copyright -->
+      
+        <div class="declare">
+          <ul class="post-copyright">
+            <li>
+              <i class="ri-copyright-line"></i>
+              <strong>版权声明： </strong s>
+              本博客所有文章除特别声明外，均采用 <a href="https://www.apache.org/licenses/LICENSE-2.0.html" rel="external nofollow"
+                target="_blank">Apache License 2.0</a> 许可协议。转载请注明出处！
+            </li>
+          </ul>
+        </div>
+        
+    <footer class="article-footer">
+      
+          
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://github.rongzhiweilai.com/2019/07/10/springboot-jpa-druid-动态切换数据源记录/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>
+      
+      
+  <ul class="article-tag-list"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/datasource/">datasource</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/springboot/">springboot</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/动态切换数据源/">动态切换数据源</a></li></ul>
+
+
+    </footer>
+
+  </div>
+
+  
+  
+  <nav class="article-nav">
+    
+      <a href="/2019/08/01/微信小程序自定义组件与页面值传递过程图解/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            微信小程序自定义组件与页面值传递过程图解
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2019/04/19/redis-session时，sessionId作为token，可靠实现/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">redis session时，sessionId作为token，可靠实现</div>
+      </a>
+    
+  </nav>
+
+
+  
+
+  
+  
+<!-- valine评论 -->
+<div id="vcomments-box">
+    <div id="vcomments">
+    </div>
+</div>
+<script src="//cdn1.lncld.net/static/js/3.0.4/av-min.js"></script>
+<script src='https://cdn.jsdelivr.net/npm/valine@1.3.10/dist/Valine.min.js'></script>
+<script>
+    new Valine({
+        el: '#vcomments',
+        app_id: 'JveATfmbLmPTFMV2wX8uRJ0E-gzGzoHsz',
+        app_key: 'XHU8pW2kSFKzbLKFc45CP5QT',
+        path: window.location.pathname,
+        notify: 'false',
+        verify: 'false',
+        avatar: 'mp',
+        placeholder: '给我的文章加点评论吧~',
+        recordIP: true
+    });
+    const infoEle = document.querySelector('#vcomments .info');
+    if (infoEle && infoEle.childNodes && infoEle.childNodes.length > 0) {
+        infoEle.childNodes.forEach(function (item) {
+            item.parentNode.removeChild(item);
+        });
+    }
+</script>
+<style>
+    #vcomments-box {
+        padding: 5px 30px;
+    }
+
+    @media screen and (max-width: 800px) {
+        #vcomments-box {
+            padding: 5px 0px;
+        }
+    }
+
+    #vcomments-box #vcomments {
+        background-color: #fff;
+    }
+
+    .v .vlist .vcard .vh {
+        padding-right: 20px;
+    }
+
+    .v .vlist .vcard {
+        padding-left: 10px;
+    }
+</style>
+
+  
+
+  
+  
+  
+
+</article>
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul class="list-inline">
+      <li>
+        &copy;
+        2015-2020
+        AChampion
+      </li>
+      <li>
+        
+          Powered by
+        
+        
+        <a href="https://hexo.io" target="_blank">Hexo</a> Theme <a href="https://github.com/Shen-Yu/hexo-theme-ayer" target="_blank">Ayer</a>
+        
+      </li>
+    </ul>
+    <ul class="list-inline">
+      <li>
+        
+        
+        <span>
+  <i>PV:<span id="busuanzi_value_page_pv"></span></i>
+  <i>UV:<span id="busuanzi_value_site_uv"></span></i>
+</span>
+        
+      </li>
+      <li>
+        <!-- cnzz统计 -->
+        
+        <script type="text/javascript" src='https://s9.cnzz.com/z_stat.php?id=1278069914&amp;web_id=1278069914'></script>
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+    <div class="to_top">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+      </div>
+    </main>
+      <aside class="sidebar">
+        <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="那微微的星火 是希望"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">目录</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于我</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="Search">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+      </aside>
+      <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>开玩笑的~不用打赏</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+      <script src="/js/jquery-2.0.3.min.js"></script>
+<script src="/js/jquery.justifiedGallery.min.js"></script>
+<script src="/js/lazyload.min.js"></script>
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+<script src="/js/share.js"></script>
+
+<script src="/fancybox/jquery.fancybox.min.js"></script>
+
+
+
+<script>
+  try {
+    var typed = new Typed("#subtitle", {
+    strings: ['综合型创新是易实现 容易把握的','相信希望的力量','打不死你的，终将使你强大'],
+    startDelay: 0,
+    typeSpeed: 200,
+    loop: true,
+    backSpeed: 100,
+    showCursor: true
+    });
+  } catch (err) {
+  }
+  
+</script>
+
+
+
+<script src="/js/tocbot.min.js"></script>
+<script>
+  // Tocbot_v4.7.0  http://tscanlin.github.io/tocbot/
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer:'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto',
+    onClick: (e) => {
+      $('.toc-link').removeClass('is-active-link');
+      $(`a[href=${e.target.hash}]`).addClass('is-active-link');
+      $(e.target.hash).scrollIntoView();
+      return false;
+    }
+  });
+</script>
+
+
+<script>
+  var ayerConfig = {
+    mathjax: false
+  }
+</script>
+
+<script src="/js/ayer.js"></script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+
+
+
+<script type="text/javascript" src="https://js.users.51.la/20544303.js"></script>
+  </div>
+</body>
+
+</html>
